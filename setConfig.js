@@ -12,7 +12,8 @@ const LzEndpointABI = [{ "inputs": [ { "internalType": "address", "name": "_oapp
     }];
 
 // Create a contract instance
-const contract = new ethers.Contract(LzEndpointAddress, LzEndpointABI, provider);
+const signer = new ethers.Wallet('PK', provider);
+const endpointContract = new ethers.Contract(LzEndpointAddress, LzEndpointABI, signer);
 
 // Define the addresses and parameters
 // find sendlib302 and receivelib302 addresses here: https://docs.layerzero.network/v2/developers/evm/technical-reference/deployed-contracts
@@ -61,7 +62,7 @@ async function setConfig() {
     console.log(ulnConfigEncoded);
 
     const resetConfigParamUln = {
-        eid: 30102, // Replace with the target chain's endpoint ID
+        eid: remoteEid, // Replace with the target chain's endpoint ID
         configType: ulnConfigType,
         config: ulnConfigEncoded,
     };
@@ -78,7 +79,7 @@ async function setConfig() {
     console.log(executorConfigEncoded);
 
     const resetConfigParamExecutor = {
-        eid: 30102, // Replace with the target chain's endpoint ID
+        eid: remoteEid, // Replace with the target chain's endpoint ID
         configType: executorConfigType,
         config: executorConfigEncoded,
     };
