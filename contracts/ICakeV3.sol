@@ -32,9 +32,9 @@ interface IIFOInitializable {
     function MAX_POOL_ID() external view returns (uint8);
 
     function viewUserInfo(address _user, uint8[] calldata _pids)
-        external
-        view
-        returns (uint256[] memory, bool[] memory);
+    external
+    view
+    returns (uint256[] memory, bool[] memory);
 }
 
 contract ICakeV3 is Ownable, ReentrancyGuard {
@@ -259,6 +259,21 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
         uint256 _endTime = IIFOInitializable(msg.sender).endTimestamp();
 
         return _sumUserCredit(_user, _endTime);
+    }
+
+    function getVeCakeUser(address _user) external view returns (address) {
+        address VeCakeUser = _user;
+
+        // If this user has delegator, but the delegator is not the same user
+        if (delegator[_user] != address(0) && delegator[_user] != _user) {
+            return address(0);
+        }
+
+        if (delegated[_user] != address(0)) {
+            VeCakeUser = delegated[_user];
+        }
+
+        return VeCakeUser;
     }
 
     /**
