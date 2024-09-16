@@ -28,6 +28,13 @@ interface IIFODeployer {
 
 interface IIFOInitializable {
     function endTimestamp() external view returns (uint256);
+
+    function MAX_POOL_ID() external view returns (uint8);
+
+    function viewUserInfo(address _user, uint8[] calldata _pids)
+        external
+        view
+        returns (uint256[] memory, bool[] memory);
 }
 
 contract ICakeV3 is Ownable, ReentrancyGuard {
@@ -103,6 +110,23 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
             // clear old delegated information
             delegated[oldDelegator] = address(0);
 
+            address currIFOAddress = IIFODeployer(ifoDeployerAddress).currIFOAddress();
+
+            // check exist amount in IFO
+            uint8 MAX_POOL_ID = IIFOInitializable(currIFOAddress).MAX_POOL_ID();
+            uint8[] memory _pids;
+            for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+                _pids[i] = i;
+            }
+            (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(oldDelegator, _pids);
+            (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(delegatorConfig.delegator, _pids);
+            for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+                require(
+                    oldDelegatorAmountPools[i] == 0 && delegatorAmountPools[i] == 0,
+                    "Amount in current IFO should be empty"
+                );
+            }
+
             delegator[delegatorConfig.VECakeUser] = delegatorConfig.delegator;
             delegated[delegatorConfig.delegator] = delegatorConfig.VECakeUser;
             delegatorApprove[delegatorConfig.delegator] = address(0);
@@ -136,6 +160,23 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
         }
         // clear old delegated information
         delegated[oldDelegator] = address(0);
+
+        address currIFOAddress = IIFODeployer(ifoDeployerAddress).currIFOAddress();
+
+        // check exist amount in IFO
+        uint8 MAX_POOL_ID = IIFOInitializable(currIFOAddress).MAX_POOL_ID();
+        uint8[] memory _pids;
+        for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+            _pids[i] = i;
+        }
+        (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(oldDelegator, _pids);
+        (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(_delegator, _pids);
+        for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+            require(
+                oldDelegatorAmountPools[i] == 0 && delegatorAmountPools[i] == 0,
+                "Amount in current IFO should be empty"
+            );
+        }
 
         delegator[msg.sender] = _delegator;
         delegated[_delegator] = msg.sender;
