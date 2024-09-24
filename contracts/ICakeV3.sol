@@ -8,16 +8,19 @@ import "@openzeppelin-4.5.0/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin-4.5.0/contracts/security/ReentrancyGuard.sol";
 
 interface IVeCake {
-    function getUserInfo(address _user) external view returns (
-        int128 amount,
-        uint256 end,
-        address cakePoolProxy,
-        uint128 cakeAmount,
-        uint48 lockEndTime,
-        uint48 migrationTime,
-        uint16 cakePoolType,
-        uint16 withdrawFlag
-    );
+    function getUserInfo(address _user)
+        external
+        view
+        returns (
+            int128 amount,
+            uint256 end,
+            address cakePoolProxy,
+            uint128 cakeAmount,
+            uint48 lockEndTime,
+            uint48 migrationTime,
+            uint16 cakePoolType,
+            uint16 withdrawFlag
+        );
 
     function balanceOfAtTime(address _user, uint256 _timestamp) external view returns (uint256);
 }
@@ -32,9 +35,9 @@ interface IIFOInitializable {
     function MAX_POOL_ID() external view returns (uint8);
 
     function viewUserInfo(address _user, uint8[] calldata _pids)
-    external
-    view
-    returns (uint256[] memory, bool[] memory);
+        external
+        view
+        returns (uint256[] memory, bool[] memory);
 }
 
 contract ICakeV3 is Ownable, ReentrancyGuard {
@@ -63,10 +66,14 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
     /// @notice Gives permission to VECake account.
     /// @dev Avoid malicious attacks.
     /// The approval is cleared when the delegator was setted.
-    /// Mapping from MasterChef V3 delegator account to VECake account.
+    /// Mapping from ICakeV3 delegator account to VECake account.
     mapping(address => address) public delegatorApprove;
 
+    /// @notice Gives an override ratio for users
+    mapping(address => uint256) public userRatioOverride;
+
     event UpdateRatio(uint256 newRatio);
+    event UpdateUserRatioOverride(address indexed userAddress, uint256 ratio);
     event UpdateIfoDeployerAddress(address indexed newAddress);
     event UpdateDelegator(address indexed user, address indexed oldDelegator, address indexed delegator);
     event Approve(address indexed delegator, address indexed VECakeUser);
@@ -75,9 +82,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
      * @notice Constructor
      * @param _veCakeAddress: veCake contract
      */
-    constructor(
-        address _veCakeAddress
-    ) public {
+    constructor(address _veCakeAddress) public {
         veCakeAddress = _veCakeAddress;
         admin = owner();
         ratio = 1000;
@@ -114,15 +119,20 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
 
             // check exist amount in IFO
             uint8 MAX_POOL_ID = IIFOInitializable(currIFOAddress).MAX_POOL_ID();
-            uint8[] memory _pids;
             for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
-                _pids[i] = i;
-            }
-            (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(oldDelegator, _pids);
-            (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(delegatorConfig.delegator, _pids);
-            for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+                uint8[] memory _pids = new uint8[](1);
+                _pids[0] = i;
+                (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(
+                    oldDelegator,
+                    _pids
+                );
+                (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(
+                    delegatorConfig.delegator,
+                    _pids
+                );
+
                 require(
-                    oldDelegatorAmountPools[i] == 0 && delegatorAmountPools[i] == 0,
+                    oldDelegatorAmountPools[0] == 0 && delegatorAmountPools[0] == 0,
                     "Amount in current IFO should be empty"
                 );
             }
@@ -148,7 +158,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
     /// @notice set VECake delegator address for ICakeV3.
     /// @dev The delegator address can not have any position in ICakeV3.
     /// The old delegator address can not have any position in ICakeV3.
-    /// @param _delegator MasterChef V3 delegator address.
+    /// @param _delegator ICakeV3 delegator address.
     function setDelegator(address _delegator) external nonReentrant {
         require(_delegator != address(0), "Invalid address");
         // The delegator need to approve VECake contract.
@@ -165,15 +175,19 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
 
         // check exist amount in IFO
         uint8 MAX_POOL_ID = IIFOInitializable(currIFOAddress).MAX_POOL_ID();
-        uint8[] memory _pids;
         for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
-            _pids[i] = i;
-        }
-        (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(oldDelegator, _pids);
-        (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(_delegator, _pids);
-        for (uint8 i = 0; i <= MAX_POOL_ID; i++) {
+            uint8[] memory _pids = new uint8[](1);
+            _pids[0] = i;
+            (uint256[] memory oldDelegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(
+                oldDelegator,
+                _pids
+            );
+            (uint256[] memory delegatorAmountPools, ) = IIFOInitializable(currIFOAddress).viewUserInfo(
+                _delegator,
+                _pids
+            );
             require(
-                oldDelegatorAmountPools[i] == 0 && delegatorAmountPools[i] == 0,
+                oldDelegatorAmountPools[0] == 0 && delegatorAmountPools[0] == 0,
                 "Amount in current IFO should be empty"
             );
         }
@@ -207,7 +221,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
         // require the end time must be in the future
         // require(_endTime > block.timestamp, "end must be in future");
         // instead let's filter the time to current if too old
-        if (_endTime <= block.timestamp){
+        if (_endTime <= block.timestamp) {
             _endTime = block.timestamp;
         }
 
@@ -225,7 +239,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
 
         uint256 _endTime = IIFOInitializable(_ifo).endTimestamp();
 
-        if (_endTime <= block.timestamp){
+        if (_endTime <= block.timestamp) {
             _endTime = block.timestamp;
         }
 
@@ -245,7 +259,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
         if (currIFOAddress != address(0)) {
             _endTime = IIFOInitializable(currIFOAddress).endTimestamp();
 
-            if (_endTime <= block.timestamp){
+            if (_endTime <= block.timestamp) {
                 _endTime = block.timestamp;
             }
         }
@@ -278,13 +292,26 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
 
     /**
      * @notice update ratio for iCake calculation.
-     * @param _newRatio: new ratio
+     * @param _newRatio: new ratio to override, 1000 = 1x, 5000 = 5x. max at 5x
      */
     function updateRatio(uint256 _newRatio) external onlyOwner {
-        require(_newRatio <= RATION_PRECISION, "updateRatio: Invalid ratio");
+        require(_newRatio <= RATION_PRECISION * 5, "updateRatio: Invalid ratio");
         require(ratio != _newRatio, "updateRatio: Ratio not changed");
         ratio = _newRatio;
         emit UpdateRatio(ratio);
+    }
+
+    /**
+     * @notice update ratio for specific user to override default value
+     * @dev admin can set indepandent ratio for a specific user
+     * @param _user: address of user
+     * @param _newRatio: new ratio to override, 1000 = 1x, 5000 = 5x. max at 5x
+     */
+    function updateUserRatio(address _user, uint256 _newRatio) external onlyOwner {
+        require(_user != address(0), "updateUserRatio: user address empty");
+        require(_newRatio <= RATION_PRECISION * 5, "updateUserRatio: Invalid ratio");
+        userRatioOverride[_user] = _newRatio;
+        emit UpdateUserRatioOverride(_user, _newRatio);
     }
 
     /**
@@ -303,7 +330,7 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
      * @param _endTime timestamp to calculate user's veCake amount
      */
     function _sumUserCredit(address _user, uint256 _endTime) internal view returns (uint256) {
-        // If this user has delegator , but the delegator is not the same user in MasterChef V3, use default boost factor.
+        // If this user has delegator , but the delegator is not the same user in ICakeV3, use default boost factor.
         if (delegator[_user] != address(0) && delegator[_user] != _user) {
             return 0;
         }
@@ -319,11 +346,16 @@ contract ICakeV3 is Ownable, ReentrancyGuard {
 
         // get proxy/migrated
         uint256 veMigrate = 0;
-        ( , ,address cakePoolProxy, , , , , )  = IVeCake(veCakeAddress).getUserInfo(VEcakeUser);
+        (, , address cakePoolProxy, , , , , ) = IVeCake(veCakeAddress).getUserInfo(VEcakeUser);
         if (cakePoolProxy != address(0)) {
             veMigrate = IVeCake(veCakeAddress).balanceOfAtTime(cakePoolProxy, _endTime);
         }
 
-        return (veNative + veMigrate) * ratio / RATION_PRECISION;
+        uint256 ratioOverride = ratio;
+        if (userRatioOverride[VEcakeUser] > 0) {
+            ratioOverride = userRatioOverride[VEcakeUser];
+        }
+
+        return ((veNative + veMigrate) * ratioOverride) / RATION_PRECISION;
     }
 }
